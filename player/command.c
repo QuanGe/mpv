@@ -2355,23 +2355,28 @@ static int mp_property_video_frame_image(void *ctx, struct m_property *prop,
                                         int action, void *arg)
 {
     MPContext *mpctx = ctx;
-    struct mp_image *image =
-        mpctx->video_out ? vo_get_current_frame(mpctx->video_out) : NULL;
-    if (!image)
+    struct mp_image *image = NULL;
+        
+    if (mpctx->saved_frame != NULL) {
+        image = mpctx->saved_frame;
+    }
+    else {
+        image = mpctx->video_out ? vo_get_current_frame(mpctx->video_out) : NULL;
+        if (!image)
         return M_PROPERTY_UNAVAILABLE;
 
-    bool isHW = false;
-    // vo_get_current_frame() can return a hardware frame, which we have to download first.
-    if (image && image->fmt.flags & MP_IMGFLAG_HWACCEL) {
-            struct mp_image *nimage = mp_image_hw_download(image, NULL);
-            talloc_free(image);
-            if (!nimage){
-                return M_PROPERTY_UNAVAILABLE;
+        // vo_get_current_frame() can return a hardware frame, which we have to download first.
+        if (image && image->fmt.flags & MP_IMGFLAG_HWACCEL) {
+                struct mp_image *nimage = mp_image_hw_download(image, NULL);
+                talloc_free(image);
+                if (!nimage){
+                    return M_PROPERTY_UNAVAILABLE;
+                }
+                image = nimage;
             }
-            isHW = true;
-            image = nimage;
-        }
-        
+
+    }
+
     // convert
     struct mp_image *res = convert_image(image, IMGFMT_BGR0, mpctx->global,
                                             mpctx->log);
@@ -2380,7 +2385,7 @@ static int mp_property_video_frame_image(void *ctx, struct m_property *prop,
         return M_PROPERTY_UNAVAILABLE;
     }
     image = res;
-
+    
     switch (action) {
         case M_PROPERTY_GET_TYPE:
             *(struct m_option *)arg = (struct m_option){.type = CONF_TYPE_NODE};
@@ -2393,7 +2398,6 @@ static int mp_property_video_frame_image(void *ctx, struct m_property *prop,
 
             struct mpv_byte_array *ba =
                     node_map_add(&node, "data", MPV_FORMAT_BYTE_ARRAY)->u.ba;
-            node_map_add_flag(&node, "isHW", isHW);
             
             *ba = (struct mpv_byte_array){
                 .data = image->planes[0],
