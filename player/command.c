@@ -57,6 +57,7 @@
 #include "video/out/vo.h"
 #include "video/csputils.h"
 #include "video/hwdec.h"
+#include "video/mp_image_pool.h"
 #include "audio/aframe.h"
 #include "audio/format.h"
 #include "audio/out/ao.h"
@@ -2350,6 +2351,65 @@ static int mp_property_video_frame_info(void *ctx, struct m_property *prop,
     return m_property_read_sub(props, action, arg);
 }
 
+static int mp_property_video_frame_image(void *ctx, struct m_property *prop,
+                                        int action, void *arg)
+{
+    MPContext *mpctx = ctx;
+    struct mp_image *image =
+        mpctx->video_out ? vo_get_current_frame(mpctx->video_out) : NULL;
+    if (!image)
+        return M_PROPERTY_UNAVAILABLE;
+
+    bool isHW = false;
+    // vo_get_current_frame() can return a hardware frame, which we have to download first.
+    if (image && image->fmt.flags & MP_IMGFLAG_HWACCEL) {
+            struct mp_image *nimage = mp_image_hw_download(image, NULL);
+            talloc_free(image);
+            if (!nimage){
+                return M_PROPERTY_UNAVAILABLE;
+            }
+            isHW = true;
+            image = nimage;
+        }
+        
+    // convert
+    struct mp_image *res = convert_image(image, IMGFMT_BGR0, mpctx->global,
+                                            mpctx->log);
+    talloc_free(image);
+    if (!res){
+        return M_PROPERTY_UNAVAILABLE;
+    }
+    image = res;
+
+    switch (action) {
+        case M_PROPERTY_GET_TYPE:
+            *(struct m_option *)arg = (struct m_option){.type = CONF_TYPE_NODE};
+            talloc_free(image);
+            return M_PROPERTY_OK;
+
+        case M_PROPERTY_GET: {
+            struct mpv_node node;
+            node_init(&node, MPV_FORMAT_NODE_MAP, NULL);
+
+            struct mpv_byte_array *ba =
+                    node_map_add(&node, "data", MPV_FORMAT_BYTE_ARRAY)->u.ba;
+            node_map_add_flag(&node, "isHW", isHW);
+            
+            *ba = (struct mpv_byte_array){
+                .data = image->planes[0],
+                .size = image->stride[0] * image->h,
+            };
+            
+            *(struct mpv_node *)arg = node;
+            talloc_steal(ba, image);
+            return M_PROPERTY_OK;
+        }
+    }
+
+    talloc_free(image);
+    return M_PROPERTY_NOT_IMPLEMENTED;
+}
+
 static int mp_property_current_window_scale(void *ctx, struct m_property *prop,
                                             int action, void *arg)
 {
@@ -3292,7 +3352,7 @@ static int mp_property_lavf_demuxers(void *ctx, struct m_property *prop,
 static int mp_property_version(void *ctx, struct m_property *prop,
                                int action, void *arg)
 {
-    return m_property_strdup_ro(action, arg, mpv_version);
+    return m_property_strdup_ro(action, arg, "hello mpv");
 }
 
 static int mp_property_configuration(void *ctx, struct m_property *prop,
@@ -3859,6 +3919,8 @@ static const struct m_property mp_properties_base[] = {
     {"video-params", mp_property_vd_imgparams},
     {"video-format", mp_property_video_format},
     {"video-frame-info", mp_property_video_frame_info},
+    {"video-frame-image", mp_property_video_frame_image},
+    
     {"video-codec", mp_property_video_codec},
     M_PROPERTY_ALIAS("dwidth", "video-out-params/dw"),
     M_PROPERTY_ALIAS("dheight", "video-out-params/dh"),
@@ -3992,7 +4054,7 @@ static const char *const *const mp_event_property_change[] = {
       "vo-delayed-frame-count", "mistimed-frame-count", "vsync-ratio",
       "estimated-display-fps", "vsync-jitter", "sub-text", "secondary-sub-text",
       "audio-bitrate", "video-bitrate", "sub-bitrate", "decoder-frame-drop-count",
-      "frame-drop-count", "video-frame-info", "vf-metadata", "af-metadata",
+      "frame-drop-count", "video-frame-info", "video-frame-image","vf-metadata", "af-metadata",
       "sub-start", "sub-end", "secondary-sub-start", "secondary-sub-end"),
     E(MP_EVENT_DURATION_UPDATE, "duration"),
     E(MPV_EVENT_VIDEO_RECONFIG, "video-out-params", "video-params",
