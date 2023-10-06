@@ -2358,8 +2358,7 @@ static int mp_property_video_frame_image(void *ctx, struct m_property *prop,
         
     if(mpctx->current_frame != NULL){
         struct mp_image *tmpImage = mpctx->current_frame;
-        //tmpImage = mpctx->next_frames[0];
-         //MP_WARN(mpctx, "=============这里从next_frames 获取.\n");
+         //MP_WARN(mpctx, "=============data from mpctx  current_frame\n");
          switch (action) {
             case M_PROPERTY_GET_TYPE:
                 *(struct m_option *)arg = (struct m_option){.type = CONF_TYPE_NODE};
