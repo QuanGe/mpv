@@ -2356,9 +2356,9 @@ static int mp_property_video_frame_image(void *ctx, struct m_property *prop,
 {
     MPContext *mpctx = ctx;
         
-    if(mpctx->num_next_frames > 0){
-        struct mp_image *tmpImage = mpctx->next_frames[mpctx->num_next_frames -1];
-        tmpImage = mpctx->next_frames[0];
+    if(mpctx->current_frame != NULL){
+        struct mp_image *tmpImage = mpctx->current_frame;
+        //tmpImage = mpctx->next_frames[0];
          //MP_WARN(mpctx, "=============这里从next_frames 获取.\n");
          switch (action) {
             case M_PROPERTY_GET_TYPE:
@@ -3344,7 +3344,7 @@ static int mp_property_lavf_demuxers(void *ctx, struct m_property *prop,
 static int mp_property_version(void *ctx, struct m_property *prop,
                                int action, void *arg)
 {
-    return m_property_strdup_ro(action, arg, "hello mpv");
+    return m_property_strdup_ro(action, arg, mpv_version);
 }
 
 static int mp_property_configuration(void *ctx, struct m_property *prop,

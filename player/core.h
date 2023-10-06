@@ -323,6 +323,7 @@ typedef struct MPContext {
     struct mp_image *next_frames[VO_MAX_REQ_FRAMES + 1];
     int num_next_frames;
     struct mp_image *saved_frame;   // for hrseek_lastframe and hrseek_backstep
+    struct mp_image *current_frame;   // for drawed frame
 
     enum playback_status video_status, audio_status;
     bool restart_complete;

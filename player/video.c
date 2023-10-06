@@ -118,6 +118,7 @@ void reset_video_state(struct MPContext *mpctx)
     mpctx->mistimed_frames_total = 0;
     mpctx->drop_message_shown = 0;
     mpctx->display_sync_drift_dir = 0;
+    mpctx->current_frame = NULL;
 
     mpctx->video_status = mpctx->vo_chain ? STATUS_SYNCING : STATUS_EOF;
 }
@@ -1220,6 +1221,10 @@ void write_video(struct MPContext *mpctx)
 
     vo_queue_frame(vo, frame);
 
+    if (frame->current != NULL) {
+        mpctx->current_frame = frame->current;
+    }
+    
     check_framedrop(mpctx, vo_c);
 
     // The frames were shifted down; "initialize" the new first entry.
