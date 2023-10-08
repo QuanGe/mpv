@@ -2369,30 +2369,51 @@ static int mp_property_video_frame_image(void *ctx, struct m_property *prop,
                 struct mpv_node node;
                 node_init(&node, MPV_FORMAT_NODE_MAP, NULL);
 
-                struct mpv_byte_array *ba =
-                        node_map_add(&node, "data", MPV_FORMAT_BYTE_ARRAY)->u.ba;
-                
-                if (tmpImage->imgfmt == IMGFMT_VIDEOTOOLBOX){
-                    node_map_add_flag(&node, "isTooBox", true);
-                    *ba = (struct mpv_byte_array){
-                        .data = tmpImage->planes[3],
-                        .size = tmpImage->stride[3] * tmpImage->h,
-                    };
-                    
-                    *(struct mpv_node *)arg = node;
-                }else {
-                    node_map_add_flag(&node, "isTooBox", false);
+                bool converted = false;
+                if (tmpImage->imgfmt != IMGFMT_NV12) {
                     struct mp_image *res = convert_image(tmpImage, IMGFMT_BGR0, mpctx->global,
                                                     mpctx->log);
-                    *ba = (struct mpv_byte_array){
-                        .data = res->planes[0],
-                        .size = res->stride[0] * res->h,
-                    };
-                    
-                    *(struct mpv_node *)arg = node;
-                    talloc_steal(ba, res);
+                    tmpImage = res;                         
+                    converted = true;
                 }
+
+                //type
+                node_map_add_string(&node, "type", mp_imgfmt_to_name(tmpImage->imgfmt));
+
+                //isTooBox
+                if (tmpImage->imgfmt == IMGFMT_VIDEOTOOLBOX){
+                    node_map_add_flag(&node, "isTooBox", true);
+                    
+                }else {
+                    node_map_add_flag(&node, "isTooBox", false);
+                }
+
+                node_map_add_int64(&node,"width",tmpImage->w);
+                node_map_add_int64(&node,"height",tmpImage->h);
+
+                //planes
+                struct mpv_node *planes =
+                node_map_add(&node, "planes", MPV_FORMAT_NODE_ARRAY);
+                for (int i = 0; i < tmpImage->num_planes; i++) {
+                    
+                    struct mpv_node *plane = node_array_add(planes, MPV_FORMAT_NODE_MAP);
+                    struct mpv_byte_array *ba =
+                        node_map_add(plane, "data", MPV_FORMAT_BYTE_ARRAY)->u.ba;
+                    *ba = (struct mpv_byte_array){
+                        .data = tmpImage->planes[i],
+                        .size = tmpImage->stride[i] * tmpImage->h,
+                    };
+                    node_map_add_int64(plane,"stride",tmpImage->stride[i]);
+
+                    if (converted) {
+                        talloc_steal(ba, tmpImage);
+                        converted = false;
+                    }
+                }
+
+                *(struct mpv_node *)arg = node;
                 
+
                 return M_PROPERTY_OK;
             }
         }
