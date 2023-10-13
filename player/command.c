@@ -2369,6 +2369,10 @@ static int mp_property_video_frame_image(void *ctx, struct m_property *prop,
                 struct mpv_node node;
                 node_init(&node, MPV_FORMAT_NODE_MAP, NULL);
 
+                //raw type
+                node_map_add_string(&node, "rawType", mp_imgfmt_to_name(tmpImage->imgfmt));
+
+                //convert not nv12
                 bool converted = false;
                 if (tmpImage->imgfmt != IMGFMT_NV12) {
                     struct mp_image *res = convert_image(tmpImage, IMGFMT_BGR0, mpctx->global,
