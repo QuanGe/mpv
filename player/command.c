@@ -2426,6 +2426,90 @@ static int mp_property_video_frame_image(void *ctx, struct m_property *prop,
     return M_PROPERTY_NOT_IMPLEMENTED;
 }
 
+static int mp_property_video_frame_osd_image(void *ctx, struct m_property *prop,
+                                        int action, void *arg)
+{
+    MPContext *mpctx = ctx;
+        
+    if(mpctx->current_frame != NULL){
+        struct mp_image *tmpImage = mpctx->current_frame;
+         //MP_WARN(mpctx, "=============data from mpctx  current_frame\n");
+         switch (action) {
+            case M_PROPERTY_GET_TYPE:
+                *(struct m_option *)arg = (struct m_option){.type = CONF_TYPE_NODE};
+               
+                return M_PROPERTY_OK;
+
+            case M_PROPERTY_GET_NODE: {
+                struct mpv_node node;
+                node_init(&node, MPV_FORMAT_NODE_MAP, NULL);
+
+                //raw type
+                node_map_add_string(&node, "rawType", mp_imgfmt_to_name(tmpImage->imgfmt));
+
+                //convert not nv12
+                bool converted = false;
+                if (tmpImage->imgfmt != IMGFMT_NV12) {
+                    struct mp_image *res = convert_image(tmpImage, IMGFMT_BGR0, mpctx->global,
+                                                    mpctx->log);
+                    tmpImage = res;                         
+                    converted = true;
+                }
+
+                //type
+                node_map_add_string(&node, "type", mp_imgfmt_to_name(tmpImage->imgfmt));
+
+                //isTooBox
+                if (tmpImage->imgfmt == IMGFMT_VIDEOTOOLBOX){
+                    node_map_add_flag(&node, "isTooBox", true);
+                    
+                }else {
+                    node_map_add_flag(&node, "isTooBox", false);
+                }
+
+                node_map_add_int64(&node,"width",tmpImage->w);
+                node_map_add_int64(&node,"height",tmpImage->h);
+
+                struct mp_osd_res res = (struct mp_osd_res) {
+                    .w = tmpImage->params.w,
+                    .h = tmpImage->params.h,
+                    .display_par = tmpImage->params.p_h / (double)tmpImage->params.p_w,
+                };
+                    
+                osd_draw_on_image(mpctx->osd, res, mpctx->video_pts,
+                                        OSD_DRAW_SUB_ONLY, tmpImage);
+                   
+                //planes
+                struct mpv_node *planes =
+                node_map_add(&node, "planes", MPV_FORMAT_NODE_ARRAY);
+                for (int i = 0; i < tmpImage->num_planes; i++) {
+                    
+                    struct mpv_node *plane = node_array_add(planes, MPV_FORMAT_NODE_MAP);
+                    struct mpv_byte_array *ba =
+                        node_map_add(plane, "data", MPV_FORMAT_BYTE_ARRAY)->u.ba;
+                    *ba = (struct mpv_byte_array){
+                        .data = tmpImage->planes[i],
+                        .size = tmpImage->stride[i] * tmpImage->h,
+                    };
+                    node_map_add_int64(plane,"stride",tmpImage->stride[i]);
+
+                    if (converted) {
+                        talloc_steal(ba, tmpImage);
+                        converted = false;
+                    }
+                }
+
+                *(struct mpv_node *)arg = node;
+                
+
+                return M_PROPERTY_OK;
+            }
+        }
+    }
+    
+    return M_PROPERTY_NOT_IMPLEMENTED;
+}
+
 static int mp_property_current_window_scale(void *ctx, struct m_property *prop,
                                             int action, void *arg)
 {
@@ -3936,6 +4020,7 @@ static const struct m_property mp_properties_base[] = {
     {"video-format", mp_property_video_format},
     {"video-frame-info", mp_property_video_frame_info},
     {"video-frame-image", mp_property_video_frame_image},
+    {"video-frame-osd-image", mp_property_video_frame_osd_image},
     
     {"video-codec", mp_property_video_codec},
     M_PROPERTY_ALIAS("dwidth", "video-out-params/dw"),
@@ -4070,7 +4155,7 @@ static const char *const *const mp_event_property_change[] = {
       "vo-delayed-frame-count", "mistimed-frame-count", "vsync-ratio",
       "estimated-display-fps", "vsync-jitter", "sub-text", "secondary-sub-text",
       "audio-bitrate", "video-bitrate", "sub-bitrate", "decoder-frame-drop-count",
-      "frame-drop-count", "video-frame-info", "video-frame-image","vf-metadata", "af-metadata",
+      "frame-drop-count", "video-frame-info", "video-frame-image","video-frame-osd-image","vf-metadata", "af-metadata",
       "sub-start", "sub-end", "secondary-sub-start", "secondary-sub-end"),
     E(MP_EVENT_DURATION_UPDATE, "duration"),
     E(MPV_EVENT_VIDEO_RECONFIG, "video-out-params", "video-params",
